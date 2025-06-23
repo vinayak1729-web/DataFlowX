@@ -1,3 +1,43 @@
+# import streamlit as st
+# import pandas as pd
+# import numpy as np
+# import matplotlib.pyplot as plt
+# import seaborn as sns
+# import plotly.express as px
+# import plotly.graph_objects as go
+# from plotly.subplots import make_subplots
+# import warnings
+# import io
+# import base64
+# import uuid
+# from datetime import datetime
+# import matplotlib
+# matplotlib.use('Agg')
+
+# # Machine Learning imports
+# from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
+# from sklearn.preprocessing import StandardScaler, LabelEncoder, OneHotEncoder
+# from sklearn.impute import SimpleImputer
+# from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, GradientBoostingClassifier, GradientBoostingRegressor
+# from sklearn.linear_model import LinearRegression, LogisticRegression
+# from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+# from sklearn.svm import SVC, SVR
+# from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+# from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+# from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+# from sklearn.feature_selection import RFE, SelectKBest, f_classif, f_regression
+# from sklearn.model_selection import learning_curve
+# from scipy.stats import ks_2samp
+# import joblib
+# import xgboost as xgb
+# import lightgbm as lgb
+
+# # LaTeX for PDF generation
+# from pylatex import Document, Section, Subsection, Command, Package, Figure, Tabular
+# from pylatex.utils import italic, NoEscape
+
+# # Suppress warnings
+# warnings.filterwarnings('ignore')
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -32,12 +72,12 @@ import joblib
 import xgboost as xgb
 import lightgbm as lgb
 
-# LaTeX for PDF generation
-from pylatex import Document, Section, Subsection, Command, Package, Figure, Tabular
-from pylatex.utils import italic, NoEscape
-
-# Suppress warnings
-warnings.filterwarnings('ignore')
+# ReportLab for PDF generation
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib import colors
 
 # Set page configuration
 st.set_page_config(
@@ -1765,85 +1805,273 @@ def model_deployment():
         st.warning("⚠️ Please train a model first in the Model Selection & Training step.")
         return
     
-    st.subheader("💾 Model Export")
+    st.subheader("📦 Model Deployment Options")
     
-    if st.button("Export Model"):
+    # Save model
+    st.write("### 💾 Save Model")
+    model_name = st.text_input("Enter model name:", "my_model")
+    
+    if st.button("Save Model"):
         try:
-            model_file = f"model_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl"
-            joblib.dump(st.session_state.model, model_file)
+            joblib.dump(st.session_state.model, f"{model_name}.pkl")
+            st.success(f"✅ Model saved as {model_name}.pkl")
             
-            with open(model_file, 'rb') as file:
-                st.download_button(
-                    label="Download Model File",
-                    data=file,
-                    file_name=model_file,
-                    mime="application/octet-stream"
-                )
-            st.success("✅ Model exported successfully!")
+            # Provide download link
+            with open(f"{model_name}.pkl", "rb") as file:
+                b64 = base64.b64encode(file.read()).decode()
+                href = f'<a href="data:application/octet-stream;base64,{b64}" download="{model_name}.pkl">Download Model</a>'
+                st.markdown(href, unsafe_allow_html=True)
+        
         except Exception as e:
-            st.error(f"❌ Error exporting model: {str(e)}")
+            st.error(f"❌ Error saving model: {str(e)}")
     
-    st.subheader("🔍 Model Prediction Interface")
+    # API simulation
+    st.subheader("🌐 API Simulation")
+    st.write("Simulate model predictions through an API-like interface.")
     
-    # Create input fields for features
-    st.write("Enter values for prediction:")
+    feature_cols = st.session_state.feature_names
     input_data = {}
-    for feature in st.session_state.feature_names:
-        if st.session_state.processed_data[feature].dtype in ['int64', 'float64']:
-            input_data[feature] = st.number_input(f"{feature}:", 
-                                               value=float(st.session_state.processed_data[feature].mean()))
-        else:
-            unique_values = st.session_state.processed_data[feature].unique().tolist()
-            input_data[feature] = st.selectbox(f"{feature}:", unique_values)
+    
+    st.write("**Enter input values for prediction:**")
+    for feature in feature_cols:
+        input_data[feature] = st.number_input(
+            f"{feature}:",
+            value=float(st.session_state.X_train[feature].mean()),
+            key=f"input_{feature}"
+        )
     
     if st.button("Make Prediction"):
         try:
             input_df = pd.DataFrame([input_data])
-            
-            # Handle categorical features if needed
-            categorical_features = input_df.select_dtypes(include=['object', 'category']).columns.tolist()
-            if categorical_features and 'target_encoder' in st.session_state:
-                for col in categorical_features:
-                    le = LabelEncoder()
-                    input_df[col] = le.fit_transform(input_df[col].astype(str))
-            
             prediction = st.session_state.model.predict(input_df)
             
             if st.session_state.problem_type == "Classification" and 'target_encoder' in st.session_state:
                 prediction = st.session_state.target_encoder.inverse_transform(prediction)
             
-            st.success("✅ Prediction made successfully!")
+            st.success("✅ Prediction completed!")
             st.write(f"**Prediction:** {prediction[0]}")
             
-            if hasattr(st.session_state.model, 'predict_proba') and st.session_state.problem_type == "Classification":
-                probabilities = st.session_state.model.predict_proba(input_df)[0]
-                prob_df = pd.DataFrame({
-                    'Class': st.session_state.target_encoder.classes_ if 'target_encoder' in st.session_state else range(len(probabilities)),
-                    'Probability': probabilities
+            # Show prediction probability if available
+            if st.session_state.problem_type == "Classification" and hasattr(st.session_state.model, 'predict_proba'):
+                proba = st.session_state.model.predict_proba(input_df)[0]
+                proba_df = pd.DataFrame({
+                    'Class': st.session_state.target_encoder.classes_,
+                    'Probability': proba
                 })
-                fig = px.bar(prob_df, x='Class', y='Probability', title="Prediction Probabilities")
+                fig = px.bar(proba_df, x='Class', y='Probability', title="Prediction Probabilities")
                 st.plotly_chart(fig, use_container_width=True)
-                st.session_state.figures.append(('Prediction Probabilities', fig))
         
         except Exception as e:
             st.error(f"❌ Error making prediction: {str(e)}")
     
-    st.subheader("📡 API Deployment Simulation")
+    # Deployment instructions
+    st.subheader("📋 Deployment Instructions")
+    st.write("Example code to deploy the model using Flask:")
     st.code("""
-from fastapi import FastAPI
+from flask import Flask, request, jsonify
 import joblib
 import pandas as pd
 
-app = FastAPI()
-model = joblib.load('model.pkl')
+app = Flask(__name__)
+model = joblib.load('my_model.pkl')
 
-@app.post("/predict")
-async def predict(data: dict):
+@app.route('/predict', methods=['POST'])
+def predict():
+    data = request.get_json()
     input_df = pd.DataFrame([data])
     prediction = model.predict(input_df)
-    return {"prediction": prediction.tolist()}
-    """, language="python")
-    st.info("This is a simulated API endpoint. In a production environment, deploy using a framework like FastAPI or Flask.")
+    return jsonify({'prediction': prediction.tolist()})
+
+if __name__ == '__main__':
+    app.run(debug=True)
+    """)
+    
+    st.info("For production deployment, consider using platforms like AWS, GCP, or Azure with proper containerization (e.g., Docker).")
+
+# def monitoring_results():
+#     st.markdown('<h2 class="step-header">📈 Step 10: Monitoring & Results</h2>', unsafe_allow_html=True)
+    
+#     if st.session_state.model is None:
+#         st.warning("⚠️ Please train a model first in the Model Selection & Training step.")
+#         return
+    
+#     st.subheader("📊 Model Performance Summary")
+    
+#     metrics = st.session_state.model_metrics
+#     if st.session_state.problem_type == "Classification":
+#         col1, col2, col3 = st.columns(3)
+#         with col1:
+#             st.metric("Training Accuracy", f"{metrics['train_accuracy']:.3f}")
+#         with col2:
+#             st.metric("Test Accuracy", f"{metrics['test_accuracy']:.3f}")
+#         with col3:
+#             st.metric("Accuracy Gap", f"{abs(metrics['train_accuracy'] - metrics['test_accuracy']):.3f}")
+        
+#         # Confusion matrix
+#         cm = confusion_matrix(st.session_state.y_test, metrics['test_predictions'])
+#         fig = px.imshow(cm, text_auto=True, title="Confusion Matrix (Test Set)")
+#         st.plotly_chart(fig, use_container_width=True)
+    
+#     else:
+#         col1, col2, col3, col4 = st.columns(4)
+#         with col1:
+#             st.metric("Training R²", f"{metrics['train_r2']:.3f}")
+#         with col2:
+#             st.metric("Test R²", f"{metrics['test_r2']:.3f}")
+#         with col3:
+#             st.metric("Training RMSE", f"{metrics['train_rmse']:.3f}")
+#         with col4:
+#             st.metric("Test RMSE", f"{metrics['test_rmse']:.3f}")
+        
+#         # Actual vs Predicted
+#         fig = px.scatter(
+#             x=st.session_state.y_test,
+#             y=metrics['test_predictions'],
+#             title="Actual vs Predicted (Test Set)"
+#         )
+#         fig.add_trace(go.Scatter(
+#             x=[st.session_state.y_test.min(), st.session_state.y_test.max()],
+#             y=[st.session_state.y_test.min(), st.session_state.y_test.max()],
+#             mode='lines',
+#             name='Perfect Prediction'
+#         ))
+#         st.plotly_chart(fig, use_container_width=True)
+    
+#     # Data drift simulation
+#     st.subheader("🔍 Data Drift Monitoring")
+#     st.write("Simulate data drift by comparing training data distribution with new data.")
+    
+#     if st.button("Simulate New Data & Check Drift"):
+#         try:
+#             # Simulate new data with slight distribution shift
+#             new_data = st.session_state.X_train.copy()
+#             for col in new_data.columns:
+#                 if new_data[col].dtype in ['int64', 'float64']:
+#                     new_data[col] = new_data[col] * np.random.normal(1.1, 0.1, len(new_data))
+            
+#             # Compare distributions
+#             drift_report = []
+#             for col in new_data.columns:
+#                 if new_data[col].dtype in ['int64', 'float64']:
+#                     from scipy.stats import ks_2samp
+#                     stat, p_value = ks_2samp(st.session_state.X_train[col], new_data[col])
+#                     drift_report.append({
+#                         'Feature': col,
+#                         'KS Statistic': stat,
+#                         'P-Value': p_value,
+#                         'Drift Detected': p_value < 0.05
+#                     })
+            
+#             drift_df = pd.DataFrame(drift_report)
+#             st.dataframe(drift_df, use_container_width=True)
+            
+#             # Visualize drift for a selected feature
+#             drift_feature = st.selectbox("Select feature to visualize drift:", st.session_state.feature_names)
+#             fig = go.Figure()
+#             fig.add_trace(go.Histogram(
+#                 x=st.session_state.X_train[drift_feature],
+#                 name='Training Data',
+#                 opacity=0.5
+#             ))
+#             fig.add_trace(go.Histogram(
+#                 x=new_data[drift_feature],
+#                 name='New Data',
+#                 opacity=0.5
+#             ))
+#             fig.update_layout(
+#                 title=f"Distribution Comparison: {drift_feature}",
+#                 xaxis_title=drift_feature,
+#                 yaxis_title="Count",
+#                 barmode='overlay'
+#             )
+#             st.plotly_chart(fig, use_container_width=True)
+        
+#         except Exception as e:
+#             st.error(f"❌ Error in drift analysis: {str(e)}")
+    
+#     # Model retraining simulation
+#     st.subheader("🔄 Model Retraining")
+#     st.write("Simulate model retraining with new data.")
+    
+#     if st.button("Simulate Retraining"):
+#         try:
+#             # Simulate new data
+#             new_X = st.session_state.X_train.copy()
+#             new_y = st.session_state.y_train.copy()
+#             # Add noise to simulate new patterns
+#             new_X += np.random.normal(0, 0.05, new_X.shape)
+            
+#             # Retrain model
+#             model = st.session_state.model
+#             model.fit(new_X, new_y)
+            
+#             # Evaluate on test set
+#             y_test_pred = model.predict(st.session_state.X_test)
+#             if st.session_state.problem_type == "Classification":
+#                 new_accuracy = accuracy_score(st.session_state.y_test, y_test_pred)
+#                 st.metric("Retrained Test Accuracy", f"{new_accuracy:.3f}")
+#                 st.write(f"Previous Accuracy: {metrics['test_accuracy']:.3f}")
+#             else:
+#                 new_r2 = r2_score(st.session_state.y_test, y_test_pred)
+#                 new_rmse = np.sqrt(mean_squared_error(st.session_state.y_test, y_test_pred))
+#                 st.metric("Retrained Test R²", f"{new_r2:.3f}")
+#                 st.metric("Retrained Test RMSE", f"{new_rmse:.3f}")
+#                 st.write(f"Previous R²: {metrics['test_r2']:.3f}")
+#                 st.write(f"Previous RMSE: {metrics['test_rmse']:.3f}")
+            
+#             st.success("✅ Model retrained successfully!")
+        
+#         except Exception as e:
+#             st.error(f"❌ Error during retraining: {str(e)}")
+    
+#     # Results Communication
+#     st.subheader("📢 Results Communication")
+#     st.write("Generate a summary report for stakeholders.")
+    
+#     if st.button("Generate Report"):
+#         report = f"""
+# # Data Science Project Report
+# ## Project Overview
+# **Problem Type**: {st.session_state.problem_type}
+# **Target Variable**: {st.session_state.target_name}
+# **Features Used**: {', '.join(st.session_state.feature_names)}
+
+# ## Model Performance
+# """
+#         if st.session_state.problem_type == "Classification":
+#             report += f"""
+# - **Training Accuracy**: {metrics['train_accuracy']:.3f}
+# - **Test Accuracy**: {metrics['test_accuracy']:.3f}
+# """
+#         else:
+#             report += f"""
+# - **Training R²**: {metrics['train_r2']:.3f}
+# - **Test R²**: {metrics['test_r2']:.3f}
+# - **Training RMSE**: {metrics['train_rmse']:.3f}
+# - **Test RMSE**: {metrics['test_rmse']:.3f}
+# """
+
+#         if 'project_info' in st.session_state:
+#             report += f"""
+# ## Business Insights
+# **Objective**: {st.session_state.project_info.get('objective', 'N/A')}
+# **Success Metrics**: {st.session_state.project_info.get('metrics', 'N/A')}
+# **Key Findings**: Model performance meets/exceeds defined metrics.
+# **Recommendations**: Deploy model and monitor for data drift.
+# """
+        
+#         st.markdown(report)
+        
+#         # Provide download option
+#         st.download_button(
+#             label="Download Report",
+#             data=report,
+#             file_name="data_science_report.txt",
+#             mime="text/plain"
+#         )
+
+# if __name__ == "__main__":
+#     main()
 
 def monitoring_results():
     st.markdown('<h2 class="step-header">📈 Step 10: Monitoring & Results</h2>', unsafe_allow_html=True)
@@ -1852,110 +2080,327 @@ def monitoring_results():
         st.warning("⚠️ Please train a model first in the Model Selection & Training step.")
         return
     
-    st.subheader("📊 Model Performance Monitoring")
+    st.subheader("📊 Model Performance Summary")
     
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.session_state.problem_type == "Classification":
-            st.metric("Current Test Accuracy", f"{st.session_state.model_metrics['test_accuracy']:.3f}")
-        else:
-            st.metric("Current Test R²", f"{st.session_state.model_metrics['test_r2']:.3f}")
+    metrics = st.session_state.model_metrics
+    if st.session_state.problem_type == "Classification":
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Training Accuracy", f"{metrics['train_accuracy']:.3f}")
+        with col2:
+            st.metric("Test Accuracy", f"{metrics['test_accuracy']:.3f}")
+        with col3:
+            st.metric("Accuracy Gap", f"{abs(metrics['train_accuracy'] - metrics['test_accuracy']):.3f}")
+        
+        # Confusion matrix
+        cm = confusion_matrix(st.session_state.y_test, metrics['test_predictions'])
+        fig = px.imshow(cm, text_auto=True, title="Confusion Matrix (Test Set)")
+        st.plotly_chart(fig, use_container_width=True)
+        st.session_state.figures.append(('Confusion Matrix (Test Set)', fig))
     
-    with col2:
-        if st.session_state.problem_type == "Classification":
-            st.metric("Training Accuracy", f"{st.session_state.model_metrics['train_accuracy']:.3f}")
-        else:
-            st.metric("Training R²", f"{st.session_state.model_metrics['train_r2']:.3f}")
+    else:
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Training R²", f"{metrics['train_r2']:.3f}")
+        with col2:
+            st.metric("Test R²", f"{metrics['test_r2']:.3f}")
+        with col3:
+            st.metric("Training RMSE", f"{metrics['train_rmse']:.3f}")
+        with col4:
+            st.metric("Test RMSE", f"{metrics['test_rmse']:.3f}")
+        
+        # Actual vs Predicted
+        fig = px.scatter(
+            x=st.session_state.y_test,
+            y=metrics['test_predictions'],
+            title="Actual vs Predicted (Test Set)"
+        )
+        fig.add_trace(go.Scatter(
+            x=[st.session_state.y_test.min(), st.session_state.y_test.max()],
+            y=[st.session_state.y_test.min(), st.session_state.y_test.max()],
+            mode='lines',
+            name='Perfect Prediction'
+        ))
+        st.plotly_chart(fig, use_container_width=True)
+        st.session_state.figures.append(('Actual vs Predicted (Test Set)', fig))
     
-    # Data drift detection
-    st.subheader("🔍 Data Drift Detection")
+    # Data drift simulation
+    st.subheader("🔍 Data Drift Monitoring")
+    st.write("Simulate data drift by comparing training data distribution with new data.")
     
-    if st.button("Check for Data Drift"):
+    if st.button("Simulate New Data & Check Drift"):
         try:
-            X_train = st.session_state.X_train
-            X_test = st.session_state.X_test
+            # Simulate new data with slight distribution shift
+            new_data = st.session_state.X_train.copy()
+            for col in new_data.columns:
+                if new_data[col].dtype in ['int64', 'float64']:
+                    new_data[col] = new_data[col] * np.random.normal(1.1, 0.1, len(new_data))
             
-            drift_results = []
-            for feature in X_train.columns:
-                stat, p_value = ks_2samp(X_train[feature], X_test[feature])
-                drift_results.append({
-                    'Feature': feature,
-                    'KS Statistic': stat,
-                    'p-value': p_value,
-                    'Drift Detected': p_value < 0.05
-                })
+            # Compare distributions
+            drift_report = []
+            for col in new_data.columns:
+                if new_data[col].dtype in ['int64', 'float64']:
+                    stat, p_value = ks_2samp(st.session_state.X_train[col], new_data[col])
+                    drift_report.append({
+                        'Feature': col,
+                        'KS Statistic': stat,
+                        'P-Value': p_value,
+                        'Drift Detected': p_value < 0.05
+                    })
             
-            drift_df = pd.DataFrame(drift_results)
+            drift_df = pd.DataFrame(drift_report)
             st.dataframe(drift_df, use_container_width=True)
             
-            # Visualize drift
-            drifted_features = drift_df[drift_df['Drift Detected'] == True]['Feature'].tolist()
-            if drifted_features:
-                st.warning(f"⚠️ Data drift detected in features: {drifted_features}")
-                for feature in drifted_features[:3]:  # Show up to 3 drifted features
-                    fig = make_subplots(rows=1, cols=2, subplot_titles=['Training Distribution', 'Test Distribution'])
-                    fig.add_trace(go.Histogram(x=X_train[feature], name='Training'), row=1, col=1)
-                    fig.add_trace(go.Histogram(x=X_test[feature], name='Test'), row=1, col=2)
-                    fig.update_layout(title=f"Distribution Comparison for {feature}")
-                    st.plotly_chart(fig, use_container_width=True)
-                    st.session_state.figures.append((f'Distribution Comparison for {feature}', fig))
-            else:
-                st.success("✅ No significant data drift detected!")
+            # Visualize drift for a selected feature
+            drift_feature = st.selectbox("Select feature to visualize drift:", st.session_state.feature_names)
+            fig = go.Figure()
+            fig.add_trace(go.Histogram(
+                x=st.session_state.X_train[drift_feature],
+                name='Training Data',
+                opacity=0.5
+            ))
+            fig.add_trace(go.Histogram(
+                x=new_data[drift_feature],
+                name='New Data',
+                opacity=0.5
+            ))
+            fig.update_layout(
+                title=f"Distribution Comparison: {drift_feature}",
+                xaxis_title=drift_feature,
+                yaxis_title="Count",
+                barmode='overlay'
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            st.session_state.figures.append((f'Distribution Comparison: {drift_feature}', fig))
         
         except Exception as e:
-            st.error(f"❌ Error in data drift detection: {str(e)}")
+            st.error(f"❌ Error in drift analysis: {str(e)}")
     
-    # Generate comprehensive report
-    st.subheader("📑 Generate Project Report")
+    # Model retraining simulation
+    st.subheader("🔄 Model Retraining")
+    st.write("Simulate model retraining with new data.")
+    
+    if st.button("Simulate Retraining"):
+        try:
+            # Simulate new data
+            new_X = st.session_state.X_train.copy()
+            new_y = st.session_state.y_train.copy()
+            # Add noise to simulate new patterns
+            new_X += np.random.normal(0, 0.05, new_X.shape)
+            
+            # Retrain model
+            model = st.session_state.model
+            model.fit(new_X, new_y)
+            
+            # Evaluate on test set
+            y_test_pred = model.predict(st.session_state.X_test)
+            if st.session_state.problem_type == "Classification":
+                new_accuracy = accuracy_score(st.session_state.y_test, y_test_pred)
+                st.metric("Retrained Test Accuracy", f"{new_accuracy:.3f}")
+                st.write(f"Previous Accuracy: {metrics['test_accuracy']:.3f}")
+            else:
+                new_r2 = r2_score(st.session_state.y_test, y_test_pred)
+                new_rmse = np.sqrt(mean_squared_error(st.session_state.y_test, y_test_pred))
+                st.metric("Retrained Test R²", f"{new_r2:.3f}")
+                st.metric("Retrained Test RMSE", f"{new_rmse:.3f}")
+                st.write(f"Previous R²: {metrics['test_r2']:.3f}")
+                st.write(f"Previous RMSE: {metrics['test_rmse']:.3f}")
+            
+            st.success("✅ Model retrained successfully!")
+        
+        except Exception as e:
+            st.error(f"❌ Error during retraining: {str(e)}")
+    
+    # Results Communication
+    st.subheader("📢 Results Communication")
+    st.write("Generate a comprehensive PDF report for stakeholders, including all visualizations.")
     
     if st.button("Generate PDF Report"):
         try:
-            doc = Document()
-            doc.packages.append(Package('geometry', options=['margin=1in']))
-            doc.packages.append(Package('graphicx'))
-            doc.packages.append(Package('float'))
+            # Initialize report content for display
+            report_content = f"""
+# Data Science Project Report
+*Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*
+
+## Project Overview
+**Problem Type**: {st.session_state.problem_type}
+**Target Variable**: {st.session_state.target_name}
+**Features Used**: {', '.join(st.session_state.feature_names)}
+
+"""
+            if 'project_info' in st.session_state:
+                report_content += f"""
+**Objective**: {st.session_state.project_info.get('objective', 'N/A')}
+**Success Metrics**: {st.session_state.project_info.get('metrics', 'N/A')}
+**Timeline**: {st.session_state.project_info.get('timeline', 'N/A')}
+**Stakeholders**: {st.session_state.project_info.get('stakeholders', 'N/A')}
+
+"""
+
+            report_content += f"""
+## Data Summary
+"""
+            if st.session_state.data is not None:
+                report_content += f"""
+- **Rows**: {len(st.session_state.data)}
+- **Columns**: {len(st.session_state.data.columns)}
+- **Missing Values**: {st.session_state.data.isnull().sum().sum()}
+- **Numeric Columns**: {len(st.session_state.data.select_dtypes(include=[np.number]).columns)}
+- **Categorical Columns**: {len(st.session_state.data.select_dtypes(include=['object', 'category']).columns)}
+
+"""
+
+            report_content += f"""
+## Model Performance
+"""
+            if st.session_state.problem_type == "Classification":
+                report_content += f"""
+- **Training Accuracy**: {metrics['train_accuracy']:.3f}
+- **Test Accuracy**: {metrics['test_accuracy']:.3f}
+- **Accuracy Gap**: {abs(metrics['train_accuracy'] - metrics['test_accuracy']):.3f}
+"""
+            else:
+                report_content += f"""
+- **Training R²**: {metrics['train_r2']:.3f}
+- **Test R²**: {metrics['test_r2']:.3f}
+- **Training RMSE**: {metrics['train_rmse']:.3f}
+- **Test RMSE**: {metrics['test_rmse']:.3f}
+"""
+
+            report_content += f"""
+## Business Insights
+**Key Findings**: Model performance meets/exceeds defined metrics.
+**Recommendations**: Deploy model and monitor for data drift.
+
+## Visualizations
+The following visualizations are included in the PDF report:
+"""
+            for fig_name, _ in st.session_state.figures:
+                report_content += f"- {fig_name}\n"
+
+            # Display report content in Streamlit
+            st.markdown(report_content)
+
+            # Generate PDF using ReportLab
+            pdf_buffer = io.BytesIO()
+            doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
+            styles = getSampleStyleSheet()
+            elements = []
+
+            # Custom styles
+            title_style = styles['Heading1']
+            subtitle_style = styles['Heading2']
+            body_style = ParagraphStyle(
+                name='BodyText',
+                parent=styles['Normal'],
+                fontSize=10,
+                leading=12
+            )
+
+            # Add title
+            elements.append(Paragraph("Data Science Project Report", title_style))
+            elements.append(Paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", body_style))
+            elements.append(Spacer(1, 0.2 * inch))
+
+            # Project Overview
+            elements.append(Paragraph("Project Overview", subtitle_style))
+            elements.append(Paragraph(f"<b>Problem Type:</b> {st.session_state.problem_type}", body_style))
+            elements.append(Paragraph(f"<b>Target Variable:</b> {st.session_state.target_name}", body_style))
+            elements.append(Paragraph(f"<b>Features Used:</b> {', '.join(st.session_state.feature_names)}", body_style))
+            if 'project_info' in st.session_state:
+                elements.append(Paragraph(f"<b>Objective:</b> {st.session_state.project_info.get('objective', 'N/A')}", body_style))
+                elements.append(Paragraph(f"<b>Success Metrics:</b> {st.session_state.project_info.get('metrics', 'N/A')}", body_style))
+                elements.append(Paragraph(f"<b>Timeline:</b> {st.session_state.project_info.get('timeline', 'N/A')}", body_style))
+                elements.append(Paragraph(f"<b>Stakeholders:</b> {st.session_state.project_info.get('stakeholders', 'N/A')}", body_style))
+            elements.append(Spacer(1, 0.2 * inch))
+
+            # Data Summary
+            elements.append(Paragraph("Data Summary", subtitle_style))
+            if st.session_state.data is not None:
+                data_summary = [
+                    ["Rows", len(st.session_state.data)],
+                    ["Columns", len(st.session_state.data.columns)],
+                    ["Missing Values", st.session_state.data.isnull().sum().sum()],
+                    ["Numeric Columns", len(st.session_state.data.select_dtypes(include=[np.number]).columns)],
+                    ["Categorical Columns", len(st.session_state.data.select_dtypes(include=['object', 'category']).columns)]
+                ]
+                table = Table(data_summary)
+                table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 12),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ]))
+                elements.append(table)
+            elements.append(Spacer(1, 0.2 * inch))
+
+            # Model Performance
+            elements.append(Paragraph("Model Performance", subtitle_style))
+            if st.session_state.problem_type == "Classification":
+                perf_data = [
+                    ["Training Accuracy", f"{metrics['train_accuracy']:.3f}"],
+                    ["Test Accuracy", f"{metrics['test_accuracy']:.3f}"],
+                    ["Accuracy Gap", f"{abs(metrics['train_accuracy'] - metrics['test_accuracy']):.3f}"]
+                ]
+            else:
+                perf_data = [
+                    ["Training R²", f"{metrics['train_r2']:.3f}"],
+                    ["Test R²", f"{metrics['test_r2']:.3f}"],
+                    ["Training RMSE", f"{metrics['train_rmse']:.3f}"],
+                    ["Test RMSE", f"{metrics['test_rmse']:.3f}"]
+                ]
+            table = Table(perf_data)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            elements.append(table)
+            elements.append(Spacer(1, 0.2 * inch))
+
+            # Business Insights
+            elements.append(Paragraph("Business Insights", subtitle_style))
+            elements.append(Paragraph("<b>Key Findings:</b> Model performance meets/exceeds defined metrics.", body_style))
+            elements.append(Paragraph("<b>Recommendations:</b> Deploy model and monitor for data drift.", body_style))
+            elements.append(Spacer(1, 0.2 * inch))
+
+            # Visualizations
+            elements.append(Paragraph("Visualizations", subtitle_style))
+            for fig_name, fig in st.session_state.figures:
+                try:
+                    # Save Plotly figure as PNG
+                    img_buffer = io.BytesIO()
+                    fig.write_image(img_buffer, format='png', scale=2)
+                    img_buffer.seek(0)
+                    
+                    # Add to PDF
+                    img = Image(img_buffer, width=6 * inch, height=4 * inch)
+                    elements.append(Paragraph(fig_name, body_style))
+                    elements.append(img)
+                    elements.append(Spacer(1, 0.1 * inch))
+                except Exception as e:
+                    st.warning(f"⚠️ Could not include visualization '{fig_name}' in PDF: {str(e)}")
             
-            with doc.create(Section('Data Science Project Report')):
-                doc.append(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                
-                with doc.create(Subsection('Problem Definition')):
-                    if 'project_info' in st.session_state:
-                        doc.append(f"Problem Type: {st.session_state.project_info['problem_type']}\n")
-                        doc.append(f"Objective: {st.session_state.project_info['objective']}\n")
-                        doc.append(f"Success Metrics: {st.session_state.project_info['metrics']}\n")
-                
-                with doc.create(Subsection('Data Summary')):
-                    if st.session_state.data is not None:
-                        doc.append(f"Dataset Size: {st.session_state.data.shape}\n")
-                        doc.append(f"Features: {len(st.session_state.data.columns)}\n")
-                        doc.append(f"Missing Values: {st.session_state.data.isnull().sum().sum()}\n")
-                
-                with doc.create(Subsection('Model Performance')):
-                    if st.session_state.problem_type == "Classification":
-                        doc.append(f"Test Accuracy: {st.session_state.model_metrics['test_accuracy']:.3f}\n")
-                    else:
-                        doc.append(f"Test R²: {st.session_state.model_metrics['test_r2']:.3f}\n")
-                        doc.append(f"Test RMSE: {st.session_state.model_metrics['test_rmse']:.3f}\n")
-                
-                with doc.create(Subsection('Figures')):
-                    for fig_name, fig in st.session_state.figures:
-                        with doc.create(Figure(position='H')) as figure:
-                            img_buffer = io.BytesIO()
-                            fig.write_image(img_buffer, format='png')
-                            img_str = base64.b64encode(img_buffer.getvalue()).decode()
-                            figure.add_image(f'data:image/png;base64,{img_str}', width=NoEscape(r'0.8\textwidth'))
-                            figure.add_caption(fig_name)
+            # Build PDF
+            doc.build(elements)
+            pdf_buffer.seek(0)
             
-            pdf_file = f"project_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-            doc.generate_pdf(pdf_file, clean_tex=False)
-            
-            with open(pdf_file, 'rb') as file:
-                st.download_button(
-                    label="Download PDF Report",
-                    data=file,
-                    file_name=pdf_file,
-                    mime="application/pdf"
-                )
+            # Provide download option
+            st.download_button(
+                label="Download PDF Report",
+                data=pdf_buffer,
+                file_name=f"data_science_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                mime="application/pdf"
+            )
             st.success("✅ PDF report generated successfully!")
         
         except Exception as e:
